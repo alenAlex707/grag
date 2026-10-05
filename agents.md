@@ -12,3 +12,7 @@ You are an elite Senior Backend & Machine Learning Engineer specializing in robu
 ## Architectural Constraints for this Project
 * **No Heavy Infrastructure:** We use **NetworkX** for the graph store and **ChromaDB** (embedded) for the vector store so the app runs instantly with zero external Docker containers required for local development.
 * **Structured LLM Outputs:** Whenever an LLM is used for data extraction (like finding graph triples), it *must* use structured outputs or Pydantic validation to prevent malformed JSON crashes.
+
+## Git Workflow & Autonomous Commits
+- Whenever you finish implementing a functional chunk, step, or feature, automatically run `git add` and `git commit` with a clean, descriptive conventional commit message (e.g., `feat: ...`, `refactor: ...`). 
+- After every successful commit, automatically push the current branch to its configured remote.
