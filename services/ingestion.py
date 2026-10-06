@@ -25,7 +25,8 @@ DEFAULT_CHUNK_OVERLAP = 200
 DEFAULT_EXTRACTION_CONCURRENCY = 4
 DEFAULT_CHROMA_DIRECTORY = Path(__file__).resolve().parents[1] / "chroma_db"
 DEFAULT_COLLECTION_NAME = "grag_documents"
-DEFAULT_LLM_MODEL = "gpt-4o-mini"
+DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+DEFAULT_LLM_MODEL = "openai/gpt-oss-20b"
 
 _GRAPH_WRITE_LOCK = threading.Lock()
 
@@ -88,8 +89,8 @@ class VectorStore(Protocol):
         ...
 
 
-class OpenAITripleExtractor:
-    """Extract triples with OpenAI structured outputs and Pydantic validation."""
+class GroqTripleExtractor:
+    """Extract triples through Groq with strict Pydantic structured outputs."""
 
     _SYSTEM_PROMPT = (
         "Extract factual, directed entity relationships from the supplied text. "
@@ -107,11 +108,21 @@ class OpenAITripleExtractor:
             from openai import AsyncOpenAI
         except ImportError as exc:
             raise IngestionConfigurationError(
-                "The 'openai' package is required for triple extraction."
+                "The 'openai' package is required for the Groq-compatible client."
             ) from exc
 
+        resolved_api_key = api_key or os.getenv("GROQ_API_KEY")
+        if not resolved_api_key:
+            raise IngestionConfigurationError("GROQ_API_KEY is not configured.")
+
         self._model = model or os.getenv("GRAG_LLM_MODEL", DEFAULT_LLM_MODEL)
-        self._client: Any = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        resolved_base_url = (
+            base_url or os.getenv("GROQ_BASE_URL") or DEFAULT_GROQ_BASE_URL
+        )
+        self._client: Any = AsyncOpenAI(
+            api_key=resolved_api_key,
+            base_url=resolved_base_url,
+        )
 
     async def extract(self, text: str) -> TripleExtractionResult:
         try:
@@ -223,7 +234,7 @@ class IngestionService:
         if extraction_concurrency <= 0:
             raise ValueError("extraction_concurrency must be greater than zero.")
 
-        self._triple_extractor = triple_extractor or OpenAITripleExtractor()
+        self._triple_extractor = triple_extractor or GroqTripleExtractor()
         self._vector_store = vector_store or ChromaVectorStore()
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap

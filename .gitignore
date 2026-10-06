@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Local data & databases (ChromaDB, NetworkX pickles, local vector stores)
+data/*.json
+data/*.pickle
+data/*.gpickle
+chroma_db/
+*.db
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+agents.md
+PRD.md
+requirements.txt
