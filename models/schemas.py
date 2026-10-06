@@ -42,3 +42,21 @@ class TripleExtractionResult(StrictSchema):
     triples: list[EntityRelationshipTriple] = Field(
         description="Entity-relationship triples extracted from the input text."
     )
+
+
+class ChatRequest(StrictSchema):
+    """Query and retrieval controls accepted by the chat endpoint."""
+
+    query: str = Field(min_length=1, description="Question to answer using Grag.")
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum number of semantically similar chunks to retrieve.",
+    )
+    graph_hops: int = Field(
+        default=2,
+        ge=1,
+        le=2,
+        description="Number of graph hops to traverse from matched entities.",
+    )
