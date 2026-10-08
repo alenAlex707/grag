@@ -1,88 +1,95 @@
 # Grag
 
-Grag is a local-first hybrid GraphRAG backend built with FastAPI. It combines
-semantic retrieval from ChromaDB with explicit relationship traversal from a
-NetworkX knowledge graph, then uses a Groq-hosted LLM to generate a grounded,
-streaming answer.
+Grag is a local-first, full-stack GraphRAG workspace. It extracts structured
+relationships from source documents, stores semantic chunks in embedded
+ChromaDB, persists a NetworkX knowledge graph, and streams grounded answers to
+a Next.js chat interface.
 
-## How it works
+## Architecture
 
 ```mermaid
 flowchart LR
-    D[Documents] --> C[Chunk text]
-    C --> V[ChromaDB vectors]
-    C --> E[Groq triple extraction]
-    E --> G[NetworkX graph]
-
-    Q[User question] --> S[Semantic search]
-    Q --> T[Graph traversal]
-    V --> S
-    G --> T
-    S --> F[Fused context]
-    T --> F
-    F --> L[Groq generation]
-    L --> R[Streaming response]
+    UI[Next.js workspace] -->|POST /api/v1/ingest| API[FastAPI]
+    UI -->|POST /api/v1/chat| API
+    API --> I[Ingestion service]
+    I --> C[(ChromaDB)]
+    I --> G[(NetworkX graph)]
+    API --> R[Hybrid retriever]
+    C --> R
+    G --> R
+    R --> L[Groq LLM]
+    L -->|streamed text| UI
 ```
 
-During ingestion, Grag stores each text chunk in ChromaDB and extracts directed
-entity relationships into NetworkX. During retrieval, it searches for
-semantically related chunks, traverses one or two graph hops from matching
-entities, and combines both sources into the prompt sent to Groq.
+The app requires no graph or vector database server. ChromaDB and NetworkX
+both persist directly inside the project directory.
 
 ## Features
 
-- Async FastAPI backend with automatic OpenAPI documentation
-- Local embedded ChromaDB vector storage
-- Persistent NetworkX `MultiDiGraph` knowledge graph
-- Pydantic-validated structured entity and relationship extraction
-- Concurrent document chunk extraction with bounded LLM concurrency
-- Stable document and chunk identifiers for idempotent vector upserts
-- Hybrid semantic and graph retrieval
-- Streaming `POST /chat` responses
-- No external graph or vector database server required
+- Versioned FastAPI routes and automatic OpenAPI documentation
+- JSON, pasted-text, `.txt`, and `.md` ingestion
+- Pydantic-validated structured relationship extraction
+- Embedded ChromaDB vector search and persisted NetworkX traversal
+- Token-by-token streamed chat responses
+- Adjustable semantic `top_k` and one/two-hop graph retrieval
+- Responsive Next.js App Router interface with Tailwind CSS and Lucide icons
+- Local-first setup with no Docker requirement
 
-## Technology
+## Project structure
 
-| Component | Purpose |
-| --- | --- |
-| FastAPI | HTTP API and streaming responses |
-| Pydantic v2 | Request and structured-output validation |
-| ChromaDB | Embedded vector database |
-| `all-MiniLM-L6-v2` | Chroma's default local embedding model |
-| NetworkX | Local knowledge graph and traversal |
-| Groq | Hosted LLM inference |
-| `openai/gpt-oss-20b` | Triple extraction and answer generation |
-| uv | Python environment and dependency management |
+```text
+grag/
+├── frontend/
+│   ├── app/
+│   │   ├── globals.css          # Tailwind theme and shared styles
+│   │   ├── layout.tsx           # Root layout and metadata
+│   │   └── page.tsx             # Chat workspace page
+│   ├── components/
+│   │   ├── chat-shell.tsx       # Streaming chat state and composition
+│   │   ├── ingestion-dialog.tsx # Text/file ingestion workflow
+│   │   ├── message-list.tsx     # Conversation rendering
+│   │   └── settings-sidebar.tsx # Retrieval controls
+│   ├── lib/api.ts               # Typed FastAPI client
+│   ├── types/index.ts           # Shared frontend types
+│   └── package.json
+├── models/
+│   └── schemas.py               # Pydantic API and LLM schemas
+├── routers/
+│   ├── chat.py                  # Streaming chat route
+│   └── ingest.py                # JSON and multipart ingestion route
+├── services/
+│   ├── graph_store.py           # NetworkX persistence
+│   ├── ingestion.py             # Chunking, extraction, and dual writes
+│   └── retriever.py             # Hybrid retrieval and generation
+├── main.py                      # FastAPI app, CORS, and route mounting
+└── requirement.txt              # Python dependencies
+```
+
+Runtime data is written to `data/graph.json` and `chroma_db/`; both are ignored
+by Git.
 
 ## Requirements
 
 - Python 3.11 or newer
 - [uv](https://docs.astral.sh/uv/)
+- Node.js 20.9 or newer
 - A [Groq API key](https://console.groq.com/keys)
 
-## Setup
+## Backend setup
 
-Clone the repository and enter its root directory:
-
-```powershell
-git clone https://github.com/alenAlex707/grag.git
-cd grag
-```
-
-Create and activate a virtual environment on Windows PowerShell:
+From the repository root, create the Python environment and install packages:
 
 ```powershell
 uv venv
 .venv\Scripts\Activate.ps1
-```
-
-Install the dependencies:
-
-```powershell
 uv pip install -r requirement.txt
 ```
 
-Create a `.env` file in the project root:
+Copy the environment template and add your Groq key:
+
+```powershell
+Copy-Item .env.example .env
+```
 
 ```dotenv
 GROQ_API_KEY=replace_with_your_groq_api_key
@@ -90,138 +97,102 @@ GROQ_BASE_URL=https://api.groq.com/openai/v1
 GRAG_LLM_MODEL=openai/gpt-oss-20b
 ```
 
-The `.env` file and local database files are ignored by Git.
-
-## Run the API
+Start FastAPI in the first terminal:
 
 ```powershell
-python -m uvicorn main:app --reload --env-file .env
+python -m uvicorn main:app --reload --env-file .env --port 8000
 ```
 
-The service is available at:
+The backend is available at:
 
-- API: <http://127.0.0.1:8000>
-- Swagger UI: <http://127.0.0.1:8000/docs>
-- OpenAPI schema: <http://127.0.0.1:8000/openapi.json>
+- API: <http://localhost:8000>
+- Swagger UI: <http://localhost:8000/docs>
+- OpenAPI schema: <http://localhost:8000/openapi.json>
 
-Test the health endpoint:
+## Frontend setup
+
+Open a second terminal while the backend remains running:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/
+cd frontend
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
 ```
 
-Expected response:
+Open <http://localhost:3000>. The checked-in default already targets
+`http://localhost:8000`; set `NEXT_PUBLIC_API_URL` in `.env.local` only when the
+backend uses a different address.
 
-```json
-{
-  "status": "healthy",
-  "service": "Grag"
-}
-```
+You now have both development servers running simultaneously:
 
-## Ingest a document
+| Service | Command | Address |
+| --- | --- | --- |
+| FastAPI | `python -m uvicorn main:app --reload --env-file .env --port 8000` | `http://localhost:8000` |
+| Next.js | `npm run dev` from `frontend/` | `http://localhost:3000` |
 
-An HTTP ingestion route has not been added yet. Run the ingestion service
-directly from the project root:
+## API endpoints
+
+| Method | Path | Content type | Description |
+| --- | --- | --- | --- |
+| `GET` | `/` | — | Health check |
+| `POST` | `/api/v1/ingest` | JSON or multipart form | Persist text chunks and graph triples |
+| `POST` | `/api/v1/chat` | JSON | Retrieve context and stream an answer |
+
+### Ingest JSON
 
 ```powershell
-@'
-import asyncio
+$body = @{
+    text = "Grag uses ChromaDB for vector search and NetworkX for graph traversal."
+    metadata = @{ source = "quickstart" }
+} | ConvertTo-Json
 
-from dotenv import load_dotenv
-
-from services.ingestion import IngestionService
-
-
-load_dotenv(".env")
-
-text = """
-Grag is a hybrid retrieval-augmented generation system.
-Grag uses ChromaDB for semantic vector search.
-Grag uses NetworkX for knowledge graph traversal.
-Groq generates answers from the fused retrieval context.
-"""
-
-summary = asyncio.run(IngestionService().ingest(text))
-print(summary)
-'@ | python -
+Invoke-RestMethod `
+    -Method Post `
+    -Uri http://localhost:8000/api/v1/ingest `
+    -ContentType "application/json" `
+    -Body $body
 ```
 
-The first ingestion may take longer while Chroma downloads its local embedding
-model. When ingestion runs in a separate process, restart Uvicorn afterward so
-the API reloads the persisted NetworkX graph.
+### Ingest a file
 
-## Ask a question
+```powershell
+curl.exe -X POST "http://localhost:8000/api/v1/ingest" `
+    -F "file=@notes.md"
+```
 
-Start the API, then send a request from PowerShell. Piping the JSON through
-standard input avoids PowerShell's `curl` alias and quoting behavior:
+Uploads must be UTF-8 `.txt` or `.md` files no larger than 10 MB. A multipart
+request may also use a `text` field and an optional JSON-encoded `metadata`
+field.
+
+### Stream chat
 
 ```powershell
 '{"query":"What does Grag use?","top_k":5,"graph_hops":2}' |
-    curl.exe -N -X POST "http://127.0.0.1:8000/chat" `
+    curl.exe -N -X POST "http://localhost:8000/api/v1/chat" `
     -H "Content-Type: application/json" `
     --data-binary "@-"
 ```
 
-Example response:
+The plain-text response is streamed as it is generated. Diagnostic counts are
+returned in `X-Grag-Vector-Chunks` and `X-Grag-Graph-Triples` headers.
 
-```text
-Grag uses ChromaDB for semantic vector search and NetworkX for knowledge graph traversal.
+## Verification
+
+Validate the frontend before shipping changes:
+
+```powershell
+cd frontend
+npm run typecheck
+npm run build
+npm audit --omit=dev
 ```
 
-### Chat payload
+For backend route discovery and interactive requests, use Swagger UI at
+<http://localhost:8000/docs>.
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `query` | string | required | Question to answer |
-| `top_k` | integer | `5` | Number of semantic chunks to retrieve, from 1 to 20 |
-| `graph_hops` | integer | `2` | Graph traversal depth, either 1 or 2 |
+## Current scope
 
-The response is streamed as `text/plain`. It also includes these diagnostic
-headers:
-
-- `X-Grag-Vector-Chunks`
-- `X-Grag-Graph-Triples`
-
-## API endpoints
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/` | Service health check |
-| `POST` | `/chat` | Hybrid retrieval and streamed answer generation |
-
-## Project structure
-
-```text
-grag/
-├── data/                   # Persisted NetworkX graph data
-├── chroma_db/              # Embedded ChromaDB data
-├── models/
-│   └── schemas.py          # Pydantic request and extraction schemas
-├── routers/
-│   └── chat.py             # Streaming chat endpoint
-├── services/
-│   ├── graph_store.py      # NetworkX persistence and mutation helpers
-│   ├── ingestion.py        # Chunking, extraction, and dual-write pipeline
-│   └── retriever.py        # Hybrid retrieval and Groq streaming
-├── main.py                 # FastAPI application
-└── requirement.txt         # Runtime dependencies
-```
-
-## Local persistence
-
-- NetworkX graph: `data/graph.json`
-- ChromaDB: `chroma_db/`
-
-Both locations are excluded from Git. NetworkX is loaded when the application
-starts, while ChromaDB uses its embedded persistent client directly.
-
-## Current limitations
-
-- Ingestion is currently invoked through Python rather than an HTTP endpoint.
-- NetworkX is an in-process graph store and is intended for local or
-  single-instance use.
-- Extraction accuracy depends on the source text and LLM output.
-- Graph and vector writes are not a distributed transaction.
-- Authentication, rate limiting, and production deployment configuration have
-  not yet been added.
+Grag is designed for local development and single-instance deployments.
+Authentication, tenant isolation, rate limiting, and distributed transactions
+are not included yet.
