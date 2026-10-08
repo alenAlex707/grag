@@ -19,6 +19,15 @@ class DocumentIngestionRequest(StrictSchema):
     )
 
 
+class IngestionResponse(StrictSchema):
+    """Summary returned after documents are persisted successfully."""
+
+    document_ids: list[str]
+    document_count: int = Field(ge=1)
+    chunk_count: int = Field(ge=1)
+    triple_count: int = Field(ge=0)
+
+
 class EntityRelationshipTriple(StrictSchema):
     """A directed relationship between two extracted entities."""
 
